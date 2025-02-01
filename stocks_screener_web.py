@@ -70,8 +70,9 @@ ema_20 = stock_data.ewm(span=20, adjust=False).mean()
 # Determine if price is above 200-day SMA
 above_ma_200 = stock_data.iloc[-1] > ma_200.iloc[-1]
 
-# Determine EMA trend
-ema_trend = pd.Series(np.where(ema_5.iloc[-1] > ema_20.iloc[-1], "EMA 5 > EMA 20", "EMA 5 < EMA 20"), index=valid_stocks)
+# Determine EMA trend (Ensure Index Alignment)
+ema_trend_values = np.where(ema_5.iloc[-1].reindex(valid_stocks) > ema_20.iloc[-1].reindex(valid_stocks), "EMA 5 > EMA 20", "EMA 5 < EMA 20")
+ema_trend = pd.Series(ema_trend_values, index=valid_stocks)
 
 # Prepare final screening table
 data_table = pd.DataFrame({
