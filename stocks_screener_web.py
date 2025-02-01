@@ -40,11 +40,17 @@ for period, days in lookback_periods.items():
     }
 performance_df = pd.DataFrame(performance)
 
+# Fill missing values to avoid NaN issues
+performance_df.fillna(0, inplace=True)
+
 # Calculate RS General score based on new formula
 performance_df["RS General"] = (performance_df["1Q"] * 2) + performance_df["2Q"] + performance_df["3Q"] + performance_df["1Y"]
 
 # Normalize RS General as a percentile score
-performance_df["RS General Percentile"] = rankdata(performance_df["RS General"], method="average") / len(performance_df["RS General"]) * 100
+if not performance_df["RS General"].isnull().all():
+    performance_df["RS General Percentile"] = rankdata(performance_df["RS General"], method="average") / len(performance_df["RS General"]) * 100
+else:
+    performance_df["RS General Percentile"] = 0  # Avoid NaNs
 
 # Calculate moving averages
 ma_200 = stock_data.rolling(window=200).mean()
