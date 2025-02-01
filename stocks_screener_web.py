@@ -139,7 +139,9 @@ if filter_ema_trend:
 # Add performance metrics at the end
 performance_columns = ["12M Performance (%)", "3M Performance (%)", "1M Performance (%)", "1W Performance (%)"]
 for col in performance_columns:
-    etf_ranking[col] = performance_df[col.replace(" Performance (%)", "")].tolist()
+ if col.replace(" Performance (%)", "") in performance_df.columns:
+    etf_ranking[col] = performance_df[col.replace(" Performance (%)", "")].reindex(etf_ranking.index).tolist()
+
 
 # Display ETF Rankings in Streamlit
 st.dataframe(etf_ranking.sort_values(by="RS Rating 12M", ascending=False))
