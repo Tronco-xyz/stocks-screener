@@ -14,7 +14,12 @@ st.write("Live Stocks ranking based on relative strength vs SP500.")
 # Fetch historical price data from Yahoo Finance
 st.write("Fetching latest data...")
 all_symbols = stock_symbols + ["SPY"]  # Add SPY for benchmark comparison
-stock_data = yf.download(all_symbols, period="1y", interval="1d")
+try:
+    stock_data = yf.download(all_symbols, period="1y", interval="1d")
+except Exception as e:
+    st.error(f"Error fetching data: {e}")
+    st.stop()
+
 if stock_data.empty:
     st.error("Yahoo Finance returned empty data. Check stock symbols and API limits.")
     st.stop()
@@ -36,10 +41,13 @@ stock_data = stock_data[valid_stocks + ["SPY"]]
 performance = {}
 spy_performance = {}
 for period, days in lookback_periods.items():
-    if available_days["SPY"] >= days and stock_data["SPY"].iloc[-days] != 0:
-        spy_performance[period] = round(((stock_data["SPY"].iloc[-1] - stock_data["SPY"].iloc[-days]) / stock_data["SPY"].iloc[-days] * 100), 2)
-    else:
-        spy_performance[period] = np.nan  # Handle missing or zero SPY data gracefully
+    try:
+        if available_days["SPY"] >= days and stock_data["SPY"].iloc[-days] != 0:
+            spy_performance[period] = round(((stock_data["SPY"].iloc[-1] - stock_data["SPY"].iloc[-days]) / stock_data["SPY"].iloc[-days] * 100), 2)
+        else:
+            spy_performance[period] = np.nan
+    except IndexError:
+        spy_performance[period] = np.nan
 
     performance[period] = {}
     for stock in valid_stocks:
@@ -48,26 +56,24 @@ for period, days in lookback_periods.items():
                 performance[period][stock] = round(((stock_data[stock].iloc[-1] - stock_data[stock].iloc[-days]) / stock_data[stock].iloc[-days] * 100), 2)
             else:
                 performance[period][stock] = np.nan
-        except KeyError as e:
-            print(f"Error: {e}. Skipping {stock} RS calculation.")
+        except (KeyError, IndexError) as e:
+            st.warning(f"Skipping {stock} due to error: {e}")
             performance[period][stock] = np.nan
 
 performance_df = pd.DataFrame(performance)
-
-# Debug: Print SPY performance
-print("SPY Performance:", spy_performance)
-
-# Fill missing values to avoid NaN issues
 performance_df.fillna(0, inplace=True)
 
-# Ensure SPY performance is not NaN before calculating RS
+# Calculate RS vs SPY safely
 for period in lookback_periods.keys():
     if period in spy_performance and not np.isnan(spy_performance[period]) and spy_performance[period] != 0:
-        performance_df[f"RS vs SPY {period}"] = performance_df[period] / spy_performance[period]
+        performance_df[f"RS vs SPY {period}"] = np.where(
+            performance_df[period] != 0,
+            performance_df[period] / spy_performance[period],
+            np.nan
+        )
     else:
-        performance_df[f"RS vs SPY {period}"] = np.nan  # Avoid division errors
+        performance_df[f"RS vs SPY {period}"] = np.nan
 
-# Replace infinite values with NaN
 performance_df.replace([np.inf, -np.inf], np.nan, inplace=True)
 
 # Normalize RS vs SPY into a percentile ranking (0-100)
@@ -83,9 +89,13 @@ ema_20 = stock_data.ewm(span=20, adjust=False).mean()
 # Determine if price is above 200-day SMA
 above_ma_200 = stock_data.iloc[-1] > ma_200.iloc[-1]
 
-# Determine EMA trend (Ensure Index Alignment)
+# Determine EMA trend
 ema_trend_values = np.where(ema_5.iloc[-1].reindex(valid_stocks) > ema_20.iloc[-1].reindex(valid_stocks), "EMA 5 > EMA 20", "EMA 5 < EMA 20")
 ema_trend = pd.Series(ema_trend_values, index=valid_stocks)
+
+# Compute stock volatility
+volatility_1M = stock_data.pct_change().rolling(21).std().iloc[-1]
+volatility_3M = stock_data.pct_change().rolling(63).std().iloc[-1]
 
 # Prepare final screening table
 data_table = pd.DataFrame({
@@ -96,8 +106,10 @@ data_table = pd.DataFrame({
     "RS vs SPY 1Q": performance_df["RS vs SPY 1Q"].round(2),
     "RS vs SPY 1M": performance_df["RS vs SPY 1M"].round(2),
     "RS vs SPY 1W": performance_df["RS vs SPY 1W"].round(2),
-    "Above 200 SMA": above_ma_200.reindex(performance_df.index).fillna(False).tolist(),
-    "EMA Trend": ema_trend.reindex(performance_df.index).fillna("Unknown").tolist()
+    "Above 200 SMA": above_ma_200.reindex(performance_df.index).fillna(False).astype(bool).tolist(),
+    "EMA Trend": ema_trend.reindex(performance_df.index).fillna("Unknown").tolist(),
+    "Volatility 1M": volatility_1M.reindex(performance_df.index).round(4),
+    "Volatility 3M": volatility_3M.reindex(performance_df.index).round(4),
 })
 
 # Display screener table
