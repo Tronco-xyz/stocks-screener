@@ -50,12 +50,15 @@ performance_df = pd.DataFrame(performance)
 # Fill missing values to avoid NaN issues
 performance_df.fillna(0, inplace=True)
 
-# Calculate RS vs SPY
+# Calculate RS vs SPY with error handling
 for period in lookback_periods.keys():
-    if not np.isnan(spy_performance[period]):  # Ensure SPY data is available
+    if not np.isnan(spy_performance[period]) and spy_performance[period] != 0:  # Ensure SPY data is available and non-zero
         performance_df[f"RS vs SPY {period}"] = performance_df[period] / spy_performance[period]
     else:
         performance_df[f"RS vs SPY {period}"] = np.nan  # Avoid division errors
+
+# Replace infinite values with NaN
+performance_df.replace([np.inf, -np.inf], np.nan, inplace=True)
 
 # Normalize RS vs SPY into a percentile ranking (0-100)
 for period in lookback_periods.keys():
