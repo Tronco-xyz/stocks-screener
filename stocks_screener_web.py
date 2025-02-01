@@ -36,16 +36,20 @@ stock_data = stock_data[valid_stocks + ["SPY"]]
 performance = {}
 spy_performance = {}
 for period, days in lookback_periods.items():
-    performance[period] = {
-        stock: round(((stock_data[stock].iloc[-1] - stock_data[stock].iloc[-days]) / stock_data[stock].iloc[-days] * 100), 2)
-        if available_days[stock] >= days else np.nan for stock in valid_stocks
-    }
     if available_days["SPY"] >= days and stock_data["SPY"].iloc[-days] != 0:
         spy_performance[period] = round(((stock_data["SPY"].iloc[-1] - stock_data["SPY"].iloc[-days]) / stock_data["SPY"].iloc[-days] * 100), 2)
     else:
         spy_performance[period] = np.nan  # Handle missing or zero SPY data gracefully
 
+    performance[period] = {
+        stock: round(((stock_data[stock].iloc[-1] - stock_data[stock].iloc[-days]) / stock_data[stock].iloc[-days] * 100), 2)
+        if available_days[stock] >= days else np.nan for stock in valid_stocks
+    }
+
 performance_df = pd.DataFrame(performance)
+
+# Debug: Print SPY performance
+print("SPY Performance:", spy_performance)
 
 # Fill missing values to avoid NaN issues
 performance_df.fillna(0, inplace=True)
