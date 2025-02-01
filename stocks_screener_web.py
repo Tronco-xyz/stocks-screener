@@ -40,10 +40,10 @@ for period, days in lookback_periods.items():
         stock: round(((stock_data[stock].iloc[-1] - stock_data[stock].iloc[-days]) / stock_data[stock].iloc[-days] * 100), 2)
         if available_days[stock] >= days else np.nan for stock in valid_stocks
     }
-    if available_days["SPY"] >= days:
+    if available_days["SPY"] >= days and stock_data["SPY"].iloc[-days] != 0:
         spy_performance[period] = round(((stock_data["SPY"].iloc[-1] - stock_data["SPY"].iloc[-days]) / stock_data["SPY"].iloc[-days] * 100), 2)
     else:
-        spy_performance[period] = np.nan  # Handle missing SPY data gracefully
+        spy_performance[period] = np.nan  # Handle missing or zero SPY data gracefully
 
 performance_df = pd.DataFrame(performance)
 
