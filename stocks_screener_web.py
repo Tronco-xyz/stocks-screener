@@ -53,8 +53,8 @@ etf_symbols = stock_symbols
 
 
 # Streamlit UI
-st.title("ETF Screener & RS Ranking")
-st.write("Live ETF ranking based on relative strength.")
+st.title("SP500 Stocks Screener & RS Ranking")
+st.write("Live Stocks ranking based on relative strength.")
 
 # Fetch historical price data from Yahoo Finance
 st.write("Fetching latest data...")
