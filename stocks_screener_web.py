@@ -50,9 +50,9 @@ performance_df = pd.DataFrame(performance)
 # Fill missing values to avoid NaN issues
 performance_df.fillna(0, inplace=True)
 
-# Calculate RS vs SPY with error handling
+# Ensure SPY performance is not NaN before calculating RS
 for period in lookback_periods.keys():
-    if not np.isnan(spy_performance[period]) and spy_performance[period] != 0:  # Ensure SPY data is available and non-zero
+    if period in spy_performance and not np.isnan(spy_performance[period]) and spy_performance[period] != 0:
         performance_df[f"RS vs SPY {period}"] = performance_df[period] / spy_performance[period]
     else:
         performance_df[f"RS vs SPY {period}"] = np.nan  # Avoid division errors
@@ -62,7 +62,7 @@ performance_df.replace([np.inf, -np.inf], np.nan, inplace=True)
 
 # Normalize RS vs SPY into a percentile ranking (0-100)
 for period in lookback_periods.keys():
-    if performance_df[f"RS vs SPY {period}"].notna().any():
+    if f"RS vs SPY {period}" in performance_df.columns and performance_df[f"RS vs SPY {period}"].notna().any():
         performance_df[f"RS vs SPY {period}"] = rankdata(performance_df[f"RS vs SPY {period}"], method="average") / len(performance_df[f"RS vs SPY {period}"]) * 100
 
 # Calculate moving averages
