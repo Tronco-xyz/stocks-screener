@@ -40,7 +40,10 @@ for period, days in lookback_periods.items():
         stock: round(((stock_data[stock].iloc[-1] - stock_data[stock].iloc[-days]) / stock_data[stock].iloc[-days] * 100), 2)
         if available_days[stock] >= days else np.nan for stock in valid_stocks
     }
-    spy_performance[period] = round(((stock_data["SPY"].iloc[-1] - stock_data["SPY"].iloc[-days]) / stock_data["SPY"].iloc[-days] * 100), 2)
+    if available_days["SPY"] >= days:
+        spy_performance[period] = round(((stock_data["SPY"].iloc[-1] - stock_data["SPY"].iloc[-days]) / stock_data["SPY"].iloc[-days] * 100), 2)
+    else:
+        spy_performance[period] = np.nan  # Handle missing SPY data gracefully
 
 performance_df = pd.DataFrame(performance)
 
@@ -49,11 +52,15 @@ performance_df.fillna(0, inplace=True)
 
 # Calculate RS vs SPY
 for period in lookback_periods.keys():
-    performance_df[f"RS vs SPY {period}"] = performance_df[period] / spy_performance[period]
+    if not np.isnan(spy_performance[period]):  # Ensure SPY data is available
+        performance_df[f"RS vs SPY {period}"] = performance_df[period] / spy_performance[period]
+    else:
+        performance_df[f"RS vs SPY {period}"] = np.nan  # Avoid division errors
 
 # Normalize RS vs SPY into a percentile ranking (0-100)
 for period in lookback_periods.keys():
-    performance_df[f"RS vs SPY {period}"] = rankdata(performance_df[f"RS vs SPY {period}"], method="average") / len(performance_df[f"RS vs SPY {period}"]) * 100
+    if performance_df[f"RS vs SPY {period}"].notna().any():
+        performance_df[f"RS vs SPY {period}"] = rankdata(performance_df[f"RS vs SPY {period}"], method="average") / len(performance_df[f"RS vs SPY {period}"]) * 100
 
 # Calculate moving averages
 ma_200 = stock_data.rolling(window=200).mean()
