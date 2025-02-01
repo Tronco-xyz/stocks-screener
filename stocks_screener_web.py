@@ -1,8 +1,12 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import yfinance as yf
-from scipy.stats import rankdata
+import requests
+import time
+
+# Alpha Vantage API Key (Replace with your own key)
+ALPHA_VANTAGE_API_KEY = "3HUZOM7Y9TF5RF2S"
+BASE_URL = "https://www.alphavantage.co/query"
 
 # Stock ticker list
 stock_symbols = [
@@ -34,34 +38,30 @@ stock_symbols = [
     "MNST", "MCO", "MS", "MOS", "MSI", "MSCI", "NDAQ", "NTAP", "NFLX", "NEM", "NWSA", "NWS",
     "NEE", "NKE", "NI", "NDSN", "NSC", "NTRS", "NOC", "NCLH", "NRG", "NUE", "NVDA", "NVR",
     "NXPI", "ORLY", "OXY", "ODFL", "OMC", "ON", "OKE", "ORCL", "OTIS", "PCAR", "PKG", "PLTR",
-    "PANW", "PARA", "PH", "PAYX", "PAYC", "PYPL", "PNR", "PEP", "PFE", "PCG", "PM", "PSX",
-    "PNW", "PNC", "POOL", "PPG", "PPL", "PFG", "PG", "PGR", "PLD", "PRU", "PEG", "PTC", "PSA",
-    "PHM", "PWR", "QCOM", "DGX", "RL", "RJF", "RTX", "O", "REG", "REGN", "RF", "RSG", "RMD",
-    "RVTY", "ROK", "ROL", "ROP", "ROST", "RCL", "SPGI", "CRM", "SBAC", "SLB", "STX", "SRE",
-    "NOW", "SHW", "SPG", "SWKS", "SJM", "SW", "SNA", "SOLV", "SO", "LUV", "SWK", "SBUX",
-    "STT", "STLD", "STE", "SYK", "SMCI", "SYF", "SNPS", "SYY", "TMUS", "TROW", "TTWO",
-    "TPR", "TRGP", "TGT", "TEL", "TDY", "TFX", "TER", "TSLA", "TXN", "TPL", "TXT", "TMO",
-    "TJX", "TSCO", "TT", "TDG", "TRV", "TRMB", "TFC", "TYL", "TSN", "USB", "UBER", "UDR",
-    "ULTA", "UNP", "UAL", "UPS", "URI", "UNH", "UHS", "VLO", "VTR", "VRSN", "VRSK", "VZ",
-    "VRTX", "VICI", "V", "VST", "VMC", "WRB", "GWW", "WAB", "WBA", "WMT", "DIS", "WBD",
-    "WM", "WAT", "WEC", "WFC", "WELL", "WST", "WDC", "WY", "WMB", "WTW", "WDAY", "WYNN",
-    "XEL", "XYL", "YUM", "ZBRA", "ZBH", "ZTS"
-]
-
-# Replace ETF symbols with stock symbols
-etf_symbols = stock_symbols
-
+    "PANW", "PARA", "PH", "PAYX", "PAYC", "PYPL", "PNR", "PEP", "PFE"]
 
 # Streamlit UI
 st.title("SP500 Stocks Screener & RS Ranking")
 st.write("Live Stocks ranking based on relative strength.")
 
-# Fetch historical price data from Yahoo Finance
+# Function to fetch stock data from Alpha Vantage
+def fetch_stock_data(symbol):
+    params = {
+        "function": "TIME_SERIES_DAILY_ADJUSTED",
+        "symbol": symbol,
+        "apikey": ALPHA_VANTAGE_API_KEY,
+        "outputsize": "compact"
+    }
+    response = requests.get(BASE_URL, params=params)
+    data = response.json()
+    return data.get("Time Series (Daily)", {})
+
+# Fetch data for all stocks
 st.write("Fetching latest data...")
-etf_data = yf.download(etf_symbols, period="1y", interval="1d")
-if etf_data.empty:
-    st.error("Yahoo Finance returned empty data. Check ETF symbols and API limits.")
-    st.stop()
+stock_data = {symbol: fetch_stock_data(symbol) for symbol in stock_symbols}
+st.write("Data retrieved successfully.")
+st.dataframe(stock_data)
+
 
 # Extract 'Close' prices
 if isinstance(etf_data.columns, pd.MultiIndex):
