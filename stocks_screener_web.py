@@ -1,53 +1,70 @@
+import streamlit as st
 import yfinance as yf
 import pandas as pd
-from datetime import date, timedelta 
 
-import streamlit as st
+# Cargar la lista de 500 acciones del S&P 500
+def get_sp500_tickers():
+    url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+    tables = pd.read_html(url)
+    return tables[0]["Symbol"].tolist()
 
-# --- Function to calculate Relative Strength (RS) --- #
-def calculate_rs(df, period):
-  """Calculates RS for a given DataFrame and time period."""
+# Parámetros iniciales
+def get_rs_data(timeframes):
+    tickers = get_sp500_tickers()
+    tickers = [t.replace(".", "-") for t in tickers]  # Yahoo usa '-' en lugar de '.'
+    tickers.append("^GSPC")  # Agregar el S&P 500
 
-  if period == '6 Months':   
-    target_date = date.today() - timedelta(days=180) 
-  elif period == '3 Months': 
-    target_date = date.today() - timedelta(days=90)
-  elif period == '10 Days':
-    target_date = date.today() - timedelta(days=10)
+    # Descargar datos históricos
+    try:
+        data = yf.download(tickers, period="6mo")["Close"]
+    except Exception as e:
+        st.error(f"Error al descargar datos: {e}")
+        return pd.DataFrame()
+    
+    if "^GSPC" not in data.columns:
+        st.error("No se pudo obtener datos del S&P 500.")
+        return pd.DataFrame()
 
-  df['Close'] = df[period].fillna(method='ffill') # Fill missing values with forward fill
-  rs = (df['Close'][target_date] / df['Close'].iloc[-2]) 
-  return rs   
+    sp500_prices = data["^GSPC"].fillna(method='ffill')  # Rellenar valores faltantes
+    data = data.drop(columns=["^GSPC"], errors='ignore').fillna(method='ffill')
 
-# --- Streamlit App Setup --- #
+    # Calcular RS
+    rs_data = {}
+    for label, days in timeframes.items():
+        if len(data) < days:
+            st.warning(f"No hay suficientes datos para el timeframe {label}")
+            continue
+        try:
+            rs = data.iloc[-days:].div(sp500_prices.iloc[-days:], axis=0)  # RS = Precio stock / Precio S&P 500
+            rs_data[label] = rs.mean()
+        except Exception as e:
+            st.warning(f"Error al calcular RS para {label}: {e}")
+    
+    if not rs_data:
+        st.error("No se encontraron datos válidos para calcular RS.")
+        return pd.DataFrame()
+    
+    return pd.DataFrame(rs_data).dropna()
 
-st.title("S&P 500 Relative Strength Analysis")
+# Interfaz en Streamlit
+st.title("Stock Screener - Relative Strength")
+st.write("Este screener calcula la fuerza relativa de acciones en base a 3 timeframes editables.")
 
-# Get a list of S&P 500 tickers
-sp500_tickers = yf.Ticker("^GSPC").info['constituents']  
+# Configuración de timeframes
+timeframes = {
+    "6m": st.slider("Días para 6 meses", min_value=60, max_value=150, value=126),
+    "3m": st.slider("Días para 3 meses", min_value=30, max_value=90, value=63),
+    "10d": st.slider("Días para 10 días", min_value=5, max_value=20, value=10)
+}
 
-selected_stocks = st.multiselect("Select Stocks (up to 10):", sp500_tickers)   # Allow users to choose stocks
-
-if selected_stocks: # Only proceed if stocks are selected
-    start_date = date(2023, 1, 1)  # Set a starting date for data retrieval
-    end_date = date.today()       
-
-    data = yf.download(tickers=selected_stocks, start=start_date, end=end_date)['Close']  
-   
-    for stock in selected_stocks:
-        stock_df = data[stock].copy() 
-
-
-        # Calculate RS for different periods and display results using Streamlit's table component
-
-       st.subheader(f"{stock}") # Add a subheader for each stock 
-       rs_6m = calculate_rs(stock_df, '6 Months')  
-       rs_3m = calculate_rs(stock_df, '3 Months')   
-       rs_10d = calculate_rs(stock_df, '10 Days')
-
-       with st.expander("Relative Strength"): # Expandable section for RS details 
-           st.write(f"6 Months: {rs_6m:.2%}")  
-           st.write(f"3 Months: {rs_3m:.2%}")    
-           st.write(f"10 Days: {rs_10d:.2%}")      
-
-
+if st.button("Ejecutar Screener"):
+    st.write("Obteniendo datos... Esto puede tardar unos segundos.")
+    rs_data = get_rs_data(timeframes)
+    
+    if not rs_data.empty:
+        # Ordenar por promedio ponderado (3m y 6m con doble peso)
+        rs_data["Weighted RS"] = (rs_data.get("6m", 0) * 2 + rs_data.get("3m", 0) * 2 + rs_data.get("10d", 0)) / 5
+        rs_data = rs_data.sort_values(by="Weighted RS", ascending=False)
+        st.dataframe(rs_data)
+    else:
+        st.error("No se encontraron datos válidos.")
