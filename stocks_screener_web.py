@@ -1,71 +1,32 @@
-import streamlit as st
 import yfinance as yf
 import pandas as pd
+import talib
 
-# Cargar la lista de 500 acciones del S&P 500
-def get_sp500_tickers():
-    url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-    tables = pd.read_html(url)
-    return tables[0]["Symbol"].tolist()
+# Define your ticker symbols and period (e.g., one year)
+tickers = ["AAPL", "MSFT"]  # Add more tickers here if needed
+period = "1y" 
 
-# Parámetros iniciales
-def get_rs_data(timeframes):
-    tickers = get_sp500_tickers()
-    tickers = [t.replace(".", "-") for t in tickers]  # Yahoo usa '-' en lugar de '.'
-    tickers.append("^GSPC")  # Agregar el S&P 500
+# Download historical data using yfinance
+data_multiple = yf.download(tickers, period=period) 
 
-    # Descargar datos históricos
-    try:
-        data = yf.download(tickers, period="6mo")["Close"]
-    except Exception as e:
-        st.error(f"Error al descargar datos: {e}")
-        return pd.DataFrame()
-    
-    if "^GSPC" not in data.columns:
-        st.error("No se pudo obtener datos del S&P 500.")
-        return pd.DataFrame()
+# Calculate Relative Strength (RS): This requires S&P 500 data which needs to be downloaded separately
+spx_data = yf.download("SPX", period=period)  # Download SPX data for the same period
+for ticker in tickers:
+    data_multiple[ticker]['RS'] = data_multiple[ticker]['Close'] / spx_data['Adj Close'] 
 
-    sp500_prices = data["^GSPC"].fillna(method='ffill')  # Rellenar valores faltantes
-    data = data.drop(columns=["^GSPC"], errors='ignore').fillna(method='ffill')
+# Calculate RSI using talib library 
+for ticker in tickers:
+    data_multiple[ticker]['RSI_14'] = talib.RSI(data_multiple[ticker]['Close'], timeperiod=14)   
 
-    # Calcular RS y escalar entre 0 y 99
-    rs_data = {}
-    for label, days in timeframes.items():
-        if len(data) < days:
-            st.warning(f"No hay suficientes datos para el timeframe {label}")
-            continue
-        try:
-            rs = data.iloc[-days:].div(sp500_prices.iloc[-days:], axis=0)  # RS = Precio stock / Precio S&P 500
-            rs_scaled = (rs.mean() - rs.mean().min()) / (rs.mean().max() - rs.mean().min()) * 99
-            rs_data[label] = rs_scaled
-        except Exception as e:
-            st.warning(f"Error al calcular RS para {label}: {e}")
-    
-    if not rs_data:
-        st.error("No se encontraron datos válidos para calcular RS.")
-        return pd.DataFrame()
-    
-    return pd.DataFrame(rs_data).dropna()
+# Define your screening criteria (adjust these values based on your strategy)
+rs_threshold = 1.2 
+rsi_level = 40
 
-# Interfaz en Streamlit
-st.title("Stock Screener - Relative Strength")
-st.write("Este screener calcula la fuerza relativa de acciones en base a 3 timeframes editables.")
+# Filter the data based on RS and RSI
+filtered_data = data_multiple[(data_multiple['RS'] > rs_threshold) & \
+                             (data_multiple['RSI_14'] < rsi_level)]
 
-# Configuración de timeframes
-timeframes = {
-    "6m": st.slider("Días para 6 meses", min_value=60, max_value=150, value=126),
-    "3m": st.slider("Días para 3 meses", min_value=30, max_value=90, value=63),
-    "10d": st.slider("Días para 10 días", min_value=5, max_value=20, value=10)
-}
+print("\n-------------------\nFiltered Stock Data:\n-------------------")
+print(filtered_data[['Close', 'RS', 'RSI_14']]) 
 
-if st.button("Ejecutar Screener"):
-    st.write("Obteniendo datos... Esto puede tardar unos segundos.")
-    rs_data = get_rs_data(timeframes)
-    
-    if not rs_data.empty:
-        # Ordenar por promedio ponderado (3m y 6m con doble peso)
-        rs_data["Weighted RS"] = (rs_data.get("6m", 0) * 2 + rs_data.get("3m", 0) * 2 + rs_data.get("10d", 0)) / 5
-        rs_data = rs_data.sort_values(by="Weighted RS", ascending=False)
-        st.dataframe(rs_data)
-    else:
-        st.error("No se encontraron datos válidos.")
+
