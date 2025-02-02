@@ -1,163 +1,112 @@
-import streamlit as st
+import requests
 import pandas as pd
 import numpy as np
-import yfinance as yf
-from scipy.stats import rankdata
+import streamlit as st
+import plotly.express as px
 
-# Stock ticker list (same as before)
-stock_symbols = ["MMM", "AOS", "ABT", "ABBV", "ACN", "ADBE", "AMD", "AES", "AFL", "A", "APD", "ABNB", "AKAM",
-    "ALB", "ARE", "ALGN", "ALLE", "LNT", "ALL", "GOOGL", "GOOG", "MO", "AMZN", "AMCR", "AEE", "AEP",
-    "AXP", "AIG", "AMT", "AWK", "AMP", "AME", "AMGN", "APH", "ADI", "ANSS", "AON", "APA", "APO",
-    "AAPL", "AMAT", "APTV", "ACGL", "ADM", "ANET", "AJG", "AIZ", "T", "ATO", "ADSK", "ADP", "AZO",
-    "AVB", "AVY", "AXON", "BKR", "BALL", "BAC", "BAX", "BDX", "BRK.B", "BBY", "TECH", "BIIB", "BLK",
-    "BX", "BK", "BA", "BKNG", "BWA", "BSX", "BMY", "AVGO", "BR", "BRO", "BF.B", "BLDR", "BG", "BXP",
-    "CHRW", "CDNS", "CZR", "CPT", "CPB", "COF", "CAH", "KMX", "CCL", "CARR", "CAT", "CBOE", "CBRE",
-    "CDW", "CE", "COR", "CNC", "CNP", "CF", "CRL", "SCHW", "CHTR", "CVX", "CMG", "CB", "CHD", "CI",
-    "CINF", "CTAS", "CSCO", "C", "CFG", "CLX", "CME", "CMS", "KO", "CTSH", "CL", "CMCSA", "CAG", "COP",
-    "ED", "STZ", "CEG", "COO", "CPRT", "GLW", "CPAY", "CTVA", "CSGP", "COST", "CTRA", "CRWD", "CCI",
-    "CSX", "CMI", "CVS", "DHR", "DRI", "DVA", "DAY", "DECK", "DE", "DELL", "DAL", "DVN", "DXCM",
-    "FANG", "DLR", "DFS", "DG", "DLTR", "D", "DPZ", "DOV", "DOW", "DHI", "DTE", "DUK", "DD", "EMN",
-    "ETN", "EBAY", "ECL", "EIX", "EW", "EA", "ELV", "EMR", "ENPH", "ETR", "EOG", "EPAM", "EQT",
-    "EFX", "EQIX", "EQR", "ERIE", "ESS", "EL", "EG", "EVRG", "ES", "EXC", "EXPE", "EXPD", "EXR",
-    "XOM", "FFIV", "FDS", "FICO", "FAST", "FRT", "FDX", "FIS", "FITB", "FSLR", "FE", "FI", "FMC",
-    "F", "FTNT", "FTV", "FOXA", "FOX", "BEN", "FCX", "GRMN", "IT", "GE", "GEHC", "GEV", "GEN",
-    "GNRC", "GD", "GIS", "GM", "GPC", "GILD", "GPN", "GL", "GDDY", "GS", "HAL", "HIG", "HAS",
-    "HCA", "DOC", "HSIC", "HSY", "HES", "HPE", "HLT", "HOLX", "HD", "HON", "HRL", "HST", "HWM",
-    "HPQ", "HUBB", "HUM", "HBAN", "HII", "IBM", "IEX", "IDXX", "ITW", "INCY", "IR", "PODD",
-    "INTC", "ICE", "IFF", "IP", "IPG", "INTU", "ISRG", "IVZ", "INVH", "IQV", "IRM", "JBHT",
-    "JBL", "JKHY", "J", "JNJ", "JCI", "JPM", "JNPR", "K", "KVUE", "KDP", "KEY", "KEYS", "KMB",
-    "KIM", "KMI", "KKR", "KLAC", "KHC", "KR", "LHX", "LH", "LRCX", "LW", "LVS", "LDOS", "LEN",
-    "LII", "LLY", "LIN", "LYV", "LKQ", "LMT", "L", "LOW", "LULU", "LYB", "MTB", "MPC", "MKTX",
-    "MAR", "MMC", "MLM", "MAS", "MA", "MTCH", "MKC", "MCD", "MCK", "MDT", "MRK", "META", "MET",
-    "MTD", "MGM", "MCHP", "MU", "MSFT", "MAA", "MRNA", "MHK", "MOH", "TAP", "MDLZ", "MPWR",
-    "MNST", "MCO", "MS", "MOS", "MSI", "MSCI", "NDAQ", "NTAP", "NFLX", "NEM", "NWSA", "NWS",
-    "NEE", "NKE", "NI", "NDSN", "NSC", "NTRS", "NOC", "NCLH", "NRG", "NUE", "NVDA", "NVR",
-    "NXPI", "ORLY", "OXY", "ODFL", "OMC", "ON", "OKE", "ORCL", "OTIS", "PCAR", "PKG", "PLTR",
-    "PANW", "PARA", "PH", "PAYX", "PAYC", "PYPL", "PNR", "PEP", "PFE", "PCG", "PM", "PSX",
-    "PNW", "PNC", "POOL", "PPG", "PPL", "PFG", "PG", "PGR", "PLD", "PRU", "PEG", "PTC", "PSA",
-    "PHM", "PWR", "QCOM", "DGX", "RL", "RJF", "RTX", "O", "REG", "REGN", "RF", "RSG", "RMD",
-    "RVTY", "ROK", "ROL", "ROP", "ROST", "RCL", "SPGI", "CRM", "SBAC", "SLB", "STX", "SRE",
-    "NOW", "SHW", "SPG", "SWKS", "SJM", "SW", "SNA", "SOLV", "SO", "LUV", "SWK", "SBUX",
-    "STT", "STLD", "STE", "SYK", "SMCI", "SYF", "SNPS", "SYY", "TMUS", "TROW", "TTWO",
-    "TPR", "TRGP", "TGT", "TEL", "TDY", "TFX", "TER", "TSLA", "TXN", "TPL", "TXT", "TMO",
-    "TJX", "TSCO", "TT", "TDG", "TRV", "TRMB", "TFC", "TYL", "TSN", "USB", "UBER", "UDR",
-    "ULTA", "UNP", "UAL", "UPS", "URI", "UNH", "UHS", "VLO", "VTR", "VRSN", "VRSK", "VZ",
-    "VRTX", "VICI", "V", "VST", "VMC", "WRB", "GWW", "WAB", "WBA", "WMT", "DIS", "WBD",
-    "WM", "WAT", "WEC", "WFC", "WELL", "WST", "WDC", "WY", "WMB", "WTW", "WDAY", "WYNN",
-    "XEL", "XYL", "YUM", "ZBRA", "ZBH", "ZTS"]  # Sample for testing
+# Alpha Vantage API Key
+API_KEY = "7R2S6Y8ZU9LGA4BQ"
 
-# Streamlit UI
-st.title("SP500 Stocks Screener & RS Ranking")
-st.write("Live Stocks ranking based on relative strength vs SP500.")
+# Define stock list (You can modify this later)
+stock_list = ["AAPL", "META", "TSLA", "STC", "NVDA", "GOOGL", "MSFT", "AMZN", "NFLX", "AMD"]
 
-# Fetch historical price data from Yahoo Finance
-st.write("Fetching latest data...")
-all_symbols = stock_symbols + ["SPY"]  # Add SPY for benchmark comparison
-try:
-    stock_data = yf.download(all_symbols, period="1y", interval="1d")
-except Exception as e:
-    st.error(f"Error fetching data: {e}")
-    st.stop()
+# Function to fetch historical data from Alpha Vantage
+def get_stock_data(symbol):
+    url = f"https://www.alphavantage.co/query"
+    params = {
+        "function": "TIME_SERIES_DAILY_ADJUSTED",
+        "symbol": symbol,
+        "apikey": API_KEY,
+        "outputsize": "full",
+        "datatype": "json"
+    }
+    
+    response = requests.get(url, params=params)
+    data = response.json()
+    
+    if "Time Series (Daily)" not in data:
+        st.error(f"Error fetching data for {symbol}. Check API limits.")
+        return None
+    
+    df = pd.DataFrame(data["Time Series (Daily)"]).T
+    df.index = pd.to_datetime(df.index)
+    df = df.sort_index()
+    df = df.rename(columns={"5. adjusted close": "Close"})
+    df["Close"] = df["Close"].astype(float)
+    
+    return df[["Close"]]
 
-if stock_data.empty:
-    st.error("Yahoo Finance returned empty data. Check stock symbols and API limits.")
-    st.stop()
+# Fetch S&P 500 data (Using SPY ETF as a proxy)
+st.write("Fetching S&P 500 Data...")
+sp500 = get_stock_data("SPY")
 
-# Extract 'Close' prices
-if isinstance(stock_data.columns, pd.MultiIndex):
-    stock_data = stock_data['Close']
+# Fetch stock data
+st.write("Fetching Stock Data...")
+stock_data = {symbol: get_stock_data(symbol) for symbol in stock_list}
 
-# Ensure stocks have enough data
-available_days = stock_data.count()
-max_days = available_days.max()
+# Function to calculate Relative Strength (RS)
+def calculate_relative_strength(stock_prices, sp500_prices):
+    rs_values = {}
+    
+    for symbol, prices in stock_prices.items():
+        if prices is None:
+            continue  # Skip stocks without data
+        
+        rs_ratio = prices["Close"] / sp500_prices["Close"]
+        
+        # Compute RS over different timeframes
+        rs_1w = (rs_ratio / rs_ratio.shift(5) - 1) * 100
+        rs_1m = (rs_ratio / rs_ratio.shift(21) - 1) * 100
+        rs_3m = (rs_ratio / rs_ratio.shift(63) - 1) * 100
+        rs_6m = (rs_ratio / rs_ratio.shift(126) - 1) * 100
+        rs_1y = (rs_ratio / rs_ratio.shift(252) - 1) * 100
+        
+        rs_values[symbol] = pd.DataFrame({
+            "RS_1W": rs_1w,
+            "RS_1M": rs_1m,
+            "RS_3M": rs_3m,
+            "RS_6M": rs_6m,
+            "RS_1Y": rs_1y
+        })
+    
+    return rs_values
 
-# Define time periods
-lookback_periods = {"1Y": 252, "3Q": 189, "2Q": 126, "1Q": 63, "1M": 21, "1W": 5}
-valid_stocks = [stock for stock in stock_symbols if available_days[stock] >= 63]
-stock_data = stock_data[valid_stocks + ["SPY"]]
+# Compute RS for stocks
+st.write("Calculating Relative Strength...")
+rs_scores = calculate_relative_strength(stock_data, sp500)
 
-# Calculate performance over different periods
-performance = {}
-spy_performance = {}
-for period, days in lookback_periods.items():
-    try:
-        if available_days["SPY"] >= days and stock_data["SPY"].iloc[-days] != 0:
-            spy_performance[period] = round(((stock_data["SPY"].iloc[-1] - stock_data["SPY"].iloc[-days]) / stock_data["SPY"].iloc[-days] * 100), 2)
-        else:
-            spy_performance[period] = np.nan
-    except IndexError:
-        spy_performance[period] = np.nan
+# Function to rank stocks with weighted RS
+def rank_stocks(rs_data):
+    latest_rs = {symbol: df.iloc[-1] for symbol, df in rs_data.items() if not df.empty}
+    ranked_df = pd.DataFrame(latest_rs).T
+    
+    # Apply weighted ranking (1M & 3M get double weight)
+    ranked_df["RS_Avg"] = (ranked_df["RS_1W"] + 
+                            2 * ranked_df["RS_1M"] + 
+                            2 * ranked_df["RS_3M"] + 
+                            ranked_df["RS_6M"] + 
+                            ranked_df["RS_1Y"]) / 6
+    
+    ranked_df = ranked_df.sort_values(by="RS_Avg", ascending=False)
+    return ranked_df
 
-    performance[period] = {}
-    for stock in valid_stocks:
-        try:
-            if available_days[stock] >= days:
-                performance[period][stock] = round(((stock_data[stock].iloc[-1] - stock_data[stock].iloc[-days]) / stock_data[stock].iloc[-days] * 100), 2)
-            else:
-                performance[period][stock] = np.nan
-        except (KeyError, IndexError) as e:
-            st.warning(f"Skipping {stock} due to error: {e}")
-            performance[period][stock] = np.nan
+# Rank stocks
+st.write("Ranking Stocks...")
+ranked_stocks = rank_stocks(rs_scores)
 
-performance_df = pd.DataFrame(performance)
-performance_df.fillna(0, inplace=True)
+# Streamlit Dashboard
+st.title("📈 Stock Screener - Relative Strength Analysis")
 
-# Calculate RS vs SPY safely
-for period in lookback_periods.keys():
-    if period in spy_performance and not np.isnan(spy_performance[period]) and spy_performance[period] != 0:
-        performance_df[f"RS vs SPY {period}"] = np.where(
-            performance_df[period] != 0,
-            performance_df[period] / spy_performance[period],
-            np.nan
-        )
-    else:
-        performance_df[f"RS vs SPY {period}"] = np.nan
+# Display Ranked Table
+st.subheader("Ranked Stocks by Weighted Relative Strength")
+st.dataframe(ranked_stocks)
 
-performance_df.replace([np.inf, -np.inf], np.nan, inplace=True)
-
-# Normalize RS vs SPY into a percentile ranking (0-100)
-for period in lookback_periods.keys():
-    if f"RS vs SPY {period}" in performance_df.columns and performance_df[f"RS vs SPY {period}"].notna().any():
-        performance_df[f"RS vs SPY {period}"] = rankdata(performance_df[f"RS vs SPY {period}"], method="average") / len(performance_df[f"RS vs SPY {period}"]) * 100
-
-# Calculate moving averages
-ma_200 = stock_data.rolling(window=200).mean()
-ema_5 = stock_data.ewm(span=5, adjust=False).mean()
-ema_20 = stock_data.ewm(span=20, adjust=False).mean()
-
-# Determine if price is above 200-day SMA
-above_ma_200 = stock_data.iloc[-1] > ma_200.iloc[-1]
-
-# Determine EMA trend
-ema_trend_values = np.where(ema_5.iloc[-1].reindex(valid_stocks) > ema_20.iloc[-1].reindex(valid_stocks), "EMA 5 > EMA 20", "EMA 5 < EMA 20")
-ema_trend = pd.Series(ema_trend_values, index=valid_stocks)
-
-# Compute stock volatility
-volatility_1M = stock_data.pct_change().rolling(21).std().iloc[-1]
-volatility_3M = stock_data.pct_change().rolling(63).std().iloc[-1]
-
-# Prepare final screening table
-data_table = pd.DataFrame({
-    "Stock Ticker": performance_df.index,
-    "RS vs SPY 1Y": performance_df["RS vs SPY 1Y"].round(2),
-    "RS vs SPY 3Q": performance_df["RS vs SPY 3Q"].round(2),
-    "RS vs SPY 2Q": performance_df["RS vs SPY 2Q"].round(2),
-    "RS vs SPY 1Q": performance_df["RS vs SPY 1Q"].round(2),
-    "RS vs SPY 1M": performance_df["RS vs SPY 1M"].round(2),
-    "RS vs SPY 1W": performance_df["RS vs SPY 1W"].round(2),
-    "Above 200 SMA": above_ma_200.reindex(performance_df.index).fillna(False).astype(bool).tolist(),
-    "EMA Trend": ema_trend.reindex(performance_df.index).fillna("Unknown").tolist(),
-    "Volatility 1M": volatility_1M.reindex(performance_df.index).round(4),
-    "Volatility 3M": volatility_3M.reindex(performance_df.index).round(4),
-})
-
-# Display screener table
-st.dataframe(data_table.sort_values(by="RS vs SPY 1Y", ascending=False))
-
-# Download button
-st.download_button(
-    label="Download CSV",
-    data=data_table.to_csv(index=False),
-    file_name="stock_screener.csv",
-    mime="text/csv"
+# Plot Ranking Chart
+fig = px.bar(
+    ranked_stocks,
+    x=ranked_stocks.index,
+    y="RS_Avg",
+    title="Stock Ranking by Weighted Relative Strength",
+    text="RS_Avg",
 )
+st.plotly_chart(fig)
