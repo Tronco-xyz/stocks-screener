@@ -11,7 +11,15 @@ stock_list = ["AAPL", "META", "TSLA", "STC", "NVDA", "GOOGL", "MSFT", "AMZN", "N
 def get_stock_data(symbol, period="1y"):
     try:
         stock = yf.download(symbol, period=period, interval="1d", progress=False)
-        return stock["Adj Close"]
+        
+        # Check for 'Adj Close' or fallback to 'Close'
+        if "Adj Close" in stock.columns:
+            return stock["Adj Close"]
+        elif "Close" in stock.columns:
+            return stock["Close"]
+        else:
+            st.warning(f"❌ No 'Close' or 'Adj Close' data for {symbol}.")
+            return None
     except Exception as e:
         st.warning(f"❌ Error fetching data for {symbol}: {e}")
         return None
