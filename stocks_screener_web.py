@@ -15,17 +15,29 @@ def get_rs_data(timeframes):
     tickers.append("^GSPC")  # Agregar el S&P 500
 
     # Descargar datos históricos
-    data = yf.download(tickers, period="6mo")['Close']
-    sp500_prices = data["^GSPC"]
-    data = data.drop(columns=["^GSPC"], errors='ignore')
+    try:
+        data = yf.download(tickers, period="6mo")['Close']
+    except Exception as e:
+        st.error(f"Error al descargar datos: {e}")
+        return pd.DataFrame()
+    
+    if "^GSPC" not in data.columns:
+        st.error("No se pudo obtener datos del S&P 500.")
+        return pd.DataFrame()
+
+    sp500_prices = data["^GSPC"].fillna(method='ffill')  # Rellenar valores faltantes
+    data = data.drop(columns=["^GSPC"], errors='ignore').fillna(method='ffill')
 
     # Calcular RS
     rs_data = {}
     for label, days in timeframes.items():
+        if len(data) < days:
+            st.warning(f"No hay suficientes datos para el timeframe {label}")
+            continue
         rs = data.iloc[-days:] / sp500_prices.iloc[-days:]  # RS = Precio stock / Precio S&P 500
         rs_data[label] = rs.mean()
     
-    return pd.DataFrame(rs_data)
+    return pd.DataFrame(rs_data).dropna()
 
 # Interfaz en Streamlit
 st.title("Stock Screener - Relative Strength")
@@ -42,8 +54,10 @@ if st.button("Ejecutar Screener"):
     st.write("Obteniendo datos... Esto puede tardar unos segundos.")
     rs_data = get_rs_data(timeframes)
     
-    # Ordenar por promedio ponderado (3m y 6m con doble peso)
-    rs_data["Weighted RS"] = (rs_data["6m"] * 2 + rs_data["3m"] * 2 + rs_data["10d"]) / 5
-    rs_data = rs_data.sort_values(by="Weighted RS", ascending=False)
-    
-    st.dataframe(rs_data)
+    if not rs_data.empty:
+        # Ordenar por promedio ponderado (3m y 6m con doble peso)
+        rs_data["Weighted RS"] = (rs_data.get("6m", 0) * 2 + rs_data.get("3m", 0) * 2 + rs_data.get("10d", 0)) / 5
+        rs_data = rs_data.sort_values(by="Weighted RS", ascending=False)
+        st.dataframe(rs_data)
+    else:
+        st.error("No se encontraron datos válidos.")
