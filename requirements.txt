@@ -1,6 +1,5 @@
 yfinance
 pandas
-numpy
-streamlit
-plotly
-
+numpy 
+talib  
+streamlit 
