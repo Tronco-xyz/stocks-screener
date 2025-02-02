@@ -1,47 +1,32 @@
-import requests
+import yfinance as yf
 import pandas as pd
 import numpy as np
 import streamlit as st
 import plotly.express as px
 
-# Alpha Vantage API Key
-API_KEY = "7R2S6Y8ZU9LGA4BQ"
-
-# Define stock list (You can modify this later)
+# Define stock list
 stock_list = ["AAPL", "META", "TSLA", "STC", "NVDA", "GOOGL", "MSFT", "AMZN", "NFLX", "AMD"]
 
-# Function to fetch historical data from Alpha Vantage
-def get_stock_data(symbol):
-    url = f"https://www.alphavantage.co/query"
-    params = {
-        "function": "TIME_SERIES_DAILY_ADJUSTED",
-        "symbol": symbol,
-        "apikey": API_KEY,
-        "outputsize": "full",
-        "datatype": "json"
-    }
-    
-    response = requests.get(url, params=params)
-    data = response.json()
-    
-    if "Time Series (Daily)" not in data:
-        st.error(f"Error fetching data for {symbol}. Check API limits.")
+# Function to fetch historical data from Yahoo Finance
+def get_stock_data(symbol, period="1y"):
+    try:
+        stock = yf.download(symbol, period=period, interval="1d", progress=False)
+        return stock["Adj Close"]
+    except Exception as e:
+        st.warning(f"❌ Error fetching data for {symbol}: {e}")
         return None
-    
-    df = pd.DataFrame(data["Time Series (Daily)"]).T
-    df.index = pd.to_datetime(df.index)
-    df = df.sort_index()
-    df = df.rename(columns={"5. adjusted close": "Close"})
-    df["Close"] = df["Close"].astype(float)
-    
-    return df[["Close"]]
 
 # Fetch S&P 500 data (Using SPY ETF as a proxy)
-st.write("Fetching S&P 500 Data...")
-sp500 = get_stock_data("SPY")
+st.write("🔄 Fetching S&P 500 Data (SPY ETF)...")
+sp500 = get_stock_data("^GSPC")
+
+# Ensure SPY data is available
+if sp500 is None:
+    st.error("🚨 Failed to fetch S&P 500 data. Please check Yahoo Finance connectivity.")
+    st.stop()
 
 # Fetch stock data
-st.write("Fetching Stock Data...")
+st.write("🔄 Fetching Stock Data...")
 stock_data = {symbol: get_stock_data(symbol) for symbol in stock_list}
 
 # Function to calculate Relative Strength (RS)
@@ -52,7 +37,7 @@ def calculate_relative_strength(stock_prices, sp500_prices):
         if prices is None:
             continue  # Skip stocks without data
         
-        rs_ratio = prices["Close"] / sp500_prices["Close"]
+        rs_ratio = prices / sp500_prices  # Stock Price / S&P 500 Price
         
         # Compute RS over different timeframes
         rs_1w = (rs_ratio / rs_ratio.shift(5) - 1) * 100
@@ -72,7 +57,7 @@ def calculate_relative_strength(stock_prices, sp500_prices):
     return rs_values
 
 # Compute RS for stocks
-st.write("Calculating Relative Strength...")
+st.write("📊 Calculating Relative Strength...")
 rs_scores = calculate_relative_strength(stock_data, sp500)
 
 # Function to rank stocks with weighted RS
@@ -91,7 +76,7 @@ def rank_stocks(rs_data):
     return ranked_df
 
 # Rank stocks
-st.write("Ranking Stocks...")
+st.write("🏆 Ranking Stocks...")
 ranked_stocks = rank_stocks(rs_scores)
 
 # Streamlit Dashboard
