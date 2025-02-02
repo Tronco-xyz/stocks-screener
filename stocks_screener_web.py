@@ -33,17 +33,28 @@ if sp500 is None:
     st.error("🚨 Failed to fetch S&P 500 data. Please check Yahoo Finance connectivity.")
     st.stop()
 
-# Fetch stock data
+# Fetch stock data with error handling
 st.write("🔄 Fetching Stock Data...")
-stock_data = {symbol: get_stock_data(symbol) for symbol in stock_list}
+valid_stocks = {}
+
+for symbol in stock_list:
+    data = get_stock_data(symbol)
+    if data is not None and not data.empty:
+        valid_stocks[symbol] = data
+    else:
+        st.warning(f"⚠️ Skipping {symbol} due to missing or invalid data.")
+
+# Replace stock_data with only valid stocks
+stock_data = valid_stocks
 
 # Function to calculate Relative Strength (RS)
 def calculate_relative_strength(stock_prices, sp500_prices):
     rs_values = {}
     
     for symbol, prices in stock_prices.items():
-        if prices is None:
-            continue  # Skip stocks without data
+        if prices is None or sp500_prices is None or prices.empty or sp500_prices.empty:
+            st.warning(f"⚠️ Skipping {symbol} due to missing data.")
+            continue  # Skip stocks without valid data
         
         rs_ratio = prices / sp500_prices  # Stock Price / S&P 500 Price
         
@@ -54,13 +65,18 @@ def calculate_relative_strength(stock_prices, sp500_prices):
         rs_6m = (rs_ratio / rs_ratio.shift(126) - 1) * 100
         rs_1y = (rs_ratio / rs_ratio.shift(252) - 1) * 100
         
+        # Ensure at least one valid RS value exists before storing
+        if rs_1w.empty or rs_1m.empty or rs_3m.empty or rs_6m.empty or rs_1y.empty:
+            st.warning(f"⚠️ Skipping {symbol} - Insufficient data for RS calculation.")
+            continue
+        
         rs_values[symbol] = pd.DataFrame({
             "RS_1W": rs_1w,
             "RS_1M": rs_1m,
             "RS_3M": rs_3m,
             "RS_6M": rs_6m,
             "RS_1Y": rs_1y
-        })
+        }).dropna()  # Remove rows with NaN values
     
     return rs_values
 
