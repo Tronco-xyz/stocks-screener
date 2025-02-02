@@ -1,139 +1,119 @@
-import yfinance as yf
+import streamlit as st
 import pandas as pd
 import numpy as np
-import streamlit as st
-import plotly.express as px
+import yfinance as yf
+from scipy.stats import rankdata
 
-# Define stock list
-stock_list = ["AAPL", "META", "TSLA", "STC", "NVDA", "GOOGL", "MSFT", "AMZN", "NFLX", "AMD"]
+# Fetch S&P 500 stock symbols
+@st.cache_data
+def get_sp500_stocks():
+    table = pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")[0]
+    return table["Symbol"].tolist()
 
-# Function to fetch historical data from Yahoo Finance
-def get_stock_data(symbol, period="1y"):
-    try:
-        stock = yf.download(symbol, period=period, interval="1d", progress=False)
-        
-        # Check for 'Adj Close' or fallback to 'Close'
-        if "Adj Close" in stock.columns:
-            return stock["Adj Close"]
-        elif "Close" in stock.columns:
-            return stock["Close"]
-        else:
-            st.warning(f"❌ No 'Close' or 'Adj Close' data for {symbol}.")
-            return None
-    except Exception as e:
-        st.warning(f"❌ Error fetching data for {symbol}: {e}")
-        return None
+stock_symbols = get_sp500_stocks()
 
-# Fetch S&P 500 data (Using SPY ETF as a proxy)
-st.write("🔄 Fetching S&P 500 Data (SPY ETF)...")
-sp500 = get_stock_data("^GSPC")
+# Streamlit UI
+st.title("Stock Screener & RS Ranking")
+st.write("Live stock ranking based on relative strength.")
 
-# Ensure SPY data is available
-if sp500 is None or sp500.empty:
-    st.error("🚨 Failed to fetch S&P 500 data. Please check Yahoo Finance connectivity.")
+# Fetch historical price data from Yahoo Finance
+st.write("Fetching latest data...")
+stock_data = yf.download(stock_symbols, period="1y", interval="1d")
+if stock_data.empty:
+    st.error("Yahoo Finance returned empty data. Check stock symbols and API limits.")
     st.stop()
 
-# Fetch stock data with error handling
-st.write("🔄 Fetching Stock Data...")
-valid_stocks = {}
+# Extract 'Close' prices
+if isinstance(stock_data.columns, pd.MultiIndex):
+    stock_data = stock_data['Close']
 
-for symbol in stock_list:
-    data = get_stock_data(symbol)
-    if data is not None and not data.empty:
-        valid_stocks[symbol] = data
-    else:
-        st.warning(f"⚠️ Skipping {symbol} due to missing or invalid data.")
+# Ensure stocks have enough data
+available_days = stock_data.count()
+max_days = available_days.max()
 
-# Replace stock_data with only valid stocks
-stock_data = valid_stocks
+# Adjust 12M lookback dynamically
+lookback_periods = {"12M": min(252, max_days), "3M": 63, "1M": 21, "1W": 5}
 
-# Function to calculate Relative Strength (RS)
-def calculate_relative_strength(stock_prices, sp500_prices):
-    rs_values = {}
-    
-    for symbol, prices in stock_prices.items():
-        if prices is None or sp500_prices is None or prices.empty or sp500_prices.empty:
-            st.warning(f"⚠️ Skipping {symbol} due to missing data.")
-            continue  # Skip stocks without valid data
+valid_stocks = [stock for stock in stock_data.columns if available_days[stock] >= 63]
+stock_data = stock_data[valid_stocks]
 
-        # Ensure we have enough history (at least 252 days for 1-year RS)
-        if len(prices) < 252 or len(sp500_prices) < 252:
-            st.warning(f"⚠️ Skipping {symbol} - Not enough historical data.")
-            continue
+# Calculate performance over available periods
+performance = {}
+for period, days in lookback_periods.items():
+    performance[period] = {
+        stock: round(((stock_data[stock].iloc[-1] - stock_data[stock].iloc[-days]) / stock_data[stock].iloc[-days] * 100), 2)
+        if available_days[stock] >= days else np.nan for stock in valid_stocks
+    }
 
-        rs_ratio = prices / sp500_prices  # Stock Price / S&P 500 Price
+performance_df = pd.DataFrame(performance)
 
-        # Compute RS over different timeframes
-        rs_1w = (rs_ratio / rs_ratio.shift(5) - 1) * 100
-        rs_1m = (rs_ratio / rs_ratio.shift(21) - 1) * 100
-        rs_3m = (rs_ratio / rs_ratio.shift(63) - 1) * 100
-        rs_6m = (rs_ratio / rs_ratio.shift(126) - 1) * 100
-        rs_1y = (rs_ratio / rs_ratio.shift(252) - 1) * 100
+# Calculate moving averages
+ma_200 = stock_data.rolling(window=200).mean()
+ma_50 = stock_data.rolling(window=50).mean()
+ema_5 = stock_data.ewm(span=5, adjust=False).mean()
+ema_20 = stock_data.ewm(span=20, adjust=False).mean()
 
-        # Drop rows with NaN values before storing the results
-        rs_data = pd.DataFrame({
-            "RS_1W": rs_1w,
-            "RS_1M": rs_1m,
-            "RS_3M": rs_3m,
-            "RS_6M": rs_6m,
-            "RS_1Y": rs_1y
-        }).dropna()
+# Determine if price is above or below 200-day & 50-day MA
+above_ma_200 = stock_data.iloc[-1] > ma_200.iloc[-1]
+above_ma_50 = stock_data.iloc[-1] > ma_50.iloc[-1]
+ema_trend = pd.Series(np.where(ema_5.iloc[-1] > ema_20.iloc[-1], "EMA 5 > EMA 20", "EMA 5 < EMA 20"), index=valid_stocks)
 
-        # Ensure at least one valid row exists before saving
-        if rs_data.empty:
-            st.warning(f"⚠️ Skipping {symbol} - Insufficient data after dropping NaNs.")
-            continue
-        
-        rs_values[symbol] = rs_data
-    
-    return rs_values
+# Calculate RS Rankings (percentile-based scores from 1-99)
+rs_ratings = {}
+for period in lookback_periods.keys():
+    valid_performance = performance_df[period].dropna()
+    ranked = rankdata(valid_performance, method="average") / len(valid_performance) * 99
+    rs_ratings[period] = dict(zip(valid_performance.index, np.round(ranked, 2)))
 
-# Compute RS for stocks
-st.write("📊 Calculating Relative Strength...")
-rs_scores = calculate_relative_strength(stock_data, sp500)
+rs_ratings_df = pd.DataFrame(rs_ratings, index=performance_df.index).fillna(np.nan)
 
-# Function to rank stocks with weighted RS
-def rank_stocks(rs_data):
-    if not rs_data:  # If no stocks have valid RS data, stop execution
-        st.error("🚨 No valid Relative Strength data available. Try again later.")
-        st.stop()
+# Add filters
+st.sidebar.header("Filters")
+filter_rs_12m = st.sidebar.checkbox("RS 12M > 80")
+filter_above_ma_200 = st.sidebar.checkbox("Above 200 MA")
+filter_above_ma_50 = st.sidebar.checkbox("Above 50 MA")
+filter_ema_trend = st.sidebar.checkbox("EMA 5 > EMA 20")
 
-    latest_rs = {symbol: df.iloc[-1] for symbol, df in rs_data.items() if not df.empty}
-    ranked_df = pd.DataFrame(latest_rs).T
+# Store results in a DataFrame
+stock_ranking = pd.DataFrame({
+    "Stock": performance_df.index,
+    "RS Rating 12M": rs_ratings_df["12M"].tolist(),
+    "RS Rating 3M": rs_ratings_df["3M"].tolist(),
+    "RS Rating 1M": rs_ratings_df["1M"].tolist(),
+    "RS Rating 1W": rs_ratings_df["1W"].tolist(),
+    "Above 200 MA": above_ma_200.reindex(performance_df.index).fillna(False).tolist(),
+    "Above 50 MA": above_ma_50.reindex(performance_df.index).fillna(False).tolist(),
+    "EMA Trend": ema_trend.reindex(performance_df.index).fillna("Unknown").tolist()
+})
 
-    # Ensure valid RS columns exist before ranking
-    required_columns = ["RS_1W", "RS_1M", "RS_3M", "RS_6M", "RS_1Y"]
-    if not all(col in ranked_df.columns for col in required_columns):
-        st.error("🚨 RS calculation failed due to missing columns.")
-        st.stop()
+# Apply filters safely
+if filter_rs_12m:
+    stock_ranking = stock_ranking[stock_ranking["RS Rating 12M"] > 80]
+if filter_above_ma_200:
+    stock_ranking = stock_ranking[stock_ranking["Above 200 MA"]]
+if filter_above_ma_50:
+    stock_ranking = stock_ranking[stock_ranking["Above 50 MA"]]
+if filter_ema_trend:
+    stock_ranking = stock_ranking[stock_ranking["EMA Trend"] == "EMA 5 > EMA 20"]
 
-    # Apply weighted ranking (1M & 3M get double weight)
-    ranked_df["RS_Avg"] = (ranked_df["RS_1W"] + 
-                            2 * ranked_df["RS_1M"] + 
-                            2 * ranked_df["RS_3M"] + 
-                            ranked_df["RS_6M"] + 
-                            ranked_df["RS_1Y"]) / 6
+# Add performance metrics at the end, ensuring proper alignment
+performance_columns = ["12M Performance (%)", "3M Performance (%)", "1M Performance (%)", "1W Performance (%)"]
+for col in performance_columns:
+    period = col.replace(" Performance (%)", "")
+    if period in performance_df.columns:
+        stock_ranking[col] = performance_df[period].reindex(stock_ranking["Stock"]).values
 
-    ranked_df = ranked_df.sort_values(by="RS_Avg", ascending=False)
-    return ranked_df
+# Ensure only two decimal places for all numerical columns
+for col in stock_ranking.select_dtypes(include=[np.number]).columns:
+    stock_ranking[col] = stock_ranking[col].round(2)
 
-# Rank stocks
-st.write("🏆 Ranking Stocks...")
-ranked_stocks = rank_stocks(rs_scores)
+# Display Stock Rankings in Streamlit
+st.dataframe(stock_ranking.sort_values(by="RS Rating 12M", ascending=False))
 
-# Streamlit Dashboard
-st.title("📈 Stock Screener - Relative Strength Analysis")
-
-# Display Ranked Table
-st.subheader("Ranked Stocks by Weighted Relative Strength")
-st.dataframe(ranked_stocks)
-
-# Plot Ranking Chart
-fig = px.bar(
-    ranked_stocks,
-    x=ranked_stocks.index,
-    y="RS_Avg",
-    title="Stock Ranking by Weighted Relative Strength",
-    text="RS_Avg",
+# Download Button
+st.download_button(
+    label="Download CSV",
+    data=stock_ranking.to_csv(index=False),
+    file_name="stock_ranking.csv",
+    mime="text/csv"
 )
-st.plotly_chart(fig)
