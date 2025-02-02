@@ -28,7 +28,7 @@ def get_rs_data(timeframes):
     sp500_prices = data["^GSPC"].fillna(method='ffill')  # Rellenar valores faltantes
     data = data.drop(columns=["^GSPC"], errors='ignore').fillna(method='ffill')
 
-    # Calcular RS
+    # Calcular RS y escalar entre 0 y 99
     rs_data = {}
     for label, days in timeframes.items():
         if len(data) < days:
@@ -36,7 +36,8 @@ def get_rs_data(timeframes):
             continue
         try:
             rs = data.iloc[-days:].div(sp500_prices.iloc[-days:], axis=0)  # RS = Precio stock / Precio S&P 500
-            rs_data[label] = rs.mean()
+            rs_scaled = (rs.mean() - rs.mean().min()) / (rs.mean().max() - rs.mean().min()) * 99
+            rs_data[label] = rs_scaled
         except Exception as e:
             st.warning(f"Error al calcular RS para {label}: {e}")
     
