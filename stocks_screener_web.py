@@ -1,92 +1,58 @@
-import streamlit as st
 import yfinance as yf
 import pandas as pd
+import numpy as np
 
-# Cargar la lista de 500 acciones del S&P 500
-def get_sp500_tickers():
-    url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-    tables = pd.read_html(url)
-    return tables[0]["Symbol"].tolist()
+def get_etf_data(ticker, period='1y', interval='1d'):
+    """Fetches historical data for an ETF from Yahoo Finance."""
+    etf = yf.Ticker(ticker)
+    data = etf.history(period=period, interval=interval)
+    return data
 
-# Calcular RSI
 def calculate_rsi(data, window=14):
-    delta = data.diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=window, min_periods=1).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=window, min_periods=1).mean()
-    rs = gain / loss
+    """Calculates the Relative Strength Index (RSI)."""
+    delta = data['Close'].diff()
+    gain = np.where(delta > 0, delta, 0)
+    loss = np.where(delta < 0, -delta, 0)
+    
+    avg_gain = pd.Series(gain).rolling(window=window, min_periods=1).mean()
+    avg_loss = pd.Series(loss).rolling(window=window, min_periods=1).mean()
+    
+    rs = avg_gain / avg_loss
     rsi = 100 - (100 / (1 + rs))
-    return rsi
-
-# Parámetros iniciales
-def get_rs_data(timeframes):
-    tickers = get_sp500_tickers()
-    tickers = [t.replace(".", "-") for t in tickers]  # Yahoo usa '-' en lugar de '.'
-    tickers.append("^GSPC")  # Agregar el S&P 500
-
-    # Descargar datos históricos
-    try:
-        data = yf.download(tickers, period="6mo")["Close"]
-    except Exception as e:
-        st.error(f"Error al descargar datos: {e}")
-        return pd.DataFrame()
     
-    if "^GSPC" not in data.columns:
-        st.error("No se pudo obtener datos del S&P 500.")
-        return pd.DataFrame()
+    data['RSI'] = rsi
+    return data
 
-    sp500_prices = data["^GSPC"].fillna(method='ffill')  # Rellenar valores faltantes
-    data = data.drop(columns=["^GSPC"], errors='ignore').fillna(method='ffill')
+def get_rsi_for_timeframes(ticker):
+    """Fetches ETF data and calculates RSI for daily, weekly, and monthly timeframes."""
+    daily_data = get_etf_data(ticker, period='6mo', interval='1d')
+    weekly_data = get_etf_data(ticker, period='2y', interval='1wk')
+    monthly_data = get_etf_data(ticker, period='5y', interval='1mo')
+    
+    daily_rsi = calculate_rsi(daily_data)
+    weekly_rsi = calculate_rsi(weekly_data)
+    monthly_rsi = calculate_rsi(monthly_data)
+    
+    return {
+        'Daily RSI': daily_rsi['RSI'].iloc[-1],
+        'Weekly RSI': weekly_rsi['RSI'].iloc[-1],
+        'Monthly RSI': monthly_rsi['RSI'].iloc[-1]
+    }
 
-    # Calcular RS y escalar entre 0 y 99
-    rs_data = {}
-    rsi_data = {}
-    for label, days in timeframes.items():
-        if len(data) < days:
-            st.warning(f"No hay suficientes datos para el timeframe {label}")
-            continue
+def screen_etfs(etf_list):
+    """Screens multiple ETFs and returns their RSI values."""
+    results = []
+    for etf in etf_list:
         try:
-            rs = data.iloc[-days:].div(sp500_prices.iloc[-days:], axis=0)  # RS = Precio stock / Precio S&P 500
-            rs_scaled = (rs.mean() - rs.mean().min()) / (rs.mean().max() - rs.mean().min()) * 99
-            rs_data[label] = rs_scaled
-            
-            # Calcular RSI
-            rsi_data[label] = data.apply(lambda x: calculate_rsi(x, window=14).iloc[-1])
+            rsi_values = get_rsi_for_timeframes(etf)
+            results.append({'Ticker': etf, **rsi_values})
         except Exception as e:
-            st.warning(f"Error al calcular RS/RSI para {label}: {e}")
+            print(f"Error fetching data for {etf}: {e}")
     
-    if not rs_data:
-        st.error("No se encontraron datos válidos para calcular RS/RSI.")
-        return pd.DataFrame()
-    
-    rs_df = pd.DataFrame(rs_data).dropna()
-    rsi_df = pd.DataFrame(rsi_data).dropna()
-    
-    return rs_df, rsi_df
+    df = pd.DataFrame(results)
+    return df
 
-# Interfaz en Streamlit
-st.title("Stock Screener - Relative Strength & RSI")
-st.write("Este screener calcula la fuerza relativa (RS) y el índice de fuerza relativa (RSI) en base a 3 timeframes editables.")
-
-# Configuración de timeframes
-timeframes = {
-    "6m": st.slider("Días para 6 meses", min_value=60, max_value=150, value=126),
-    "3m": st.slider("Días para 3 meses", min_value=30, max_value=90, value=63),
-    "10d": st.slider("Días para 10 días", min_value=5, max_value=20, value=10)
-}
-
-if st.button("Ejecutar Screener"):
-    st.write("Obteniendo datos... Esto puede tardar unos segundos.")
-    rs_data, rsi_data = get_rs_data(timeframes)
-    
-    if not rs_data.empty:
-        # Ordenar por promedio ponderado (3m y 6m con doble peso)
-        rs_data["Weighted RS"] = (rs_data.get("6m", 0) * 2 + rs_data.get("3m", 0) * 2 + rs_data.get("10d", 0)) / 5
-        rs_data = rs_data.sort_values(by="Weighted RS", ascending=False)
-        
-        st.subheader("Relative Strength (RS)")
-        st.dataframe(rs_data)
-        
-        st.subheader("Relative Strength Index (RSI)")
-        st.dataframe(rsi_data)
-    else:
-        st.error("No se encontraron datos válidos.")
+# Example usage
+etfs = ['SPY', 'QQQ', 'DIA', 'ARKK', 'VTI']  # Add more ETFs as needed
+etf_screener_results = screen_etfs(etfs)
+print(etf_screener_results)
