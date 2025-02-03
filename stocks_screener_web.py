@@ -2,6 +2,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 from scipy.stats import percentileofscore
+import streamlit as st
 
 # Define the ETFs to screen and the benchmark (S&P 500)
 etf_symbols = ['QQQ', 'SPY', 'DIA', 'ARKK', 'XLK', 'XLF', 'XLV']  # Add more as needed
@@ -11,13 +12,24 @@ weights = [0.4, 0.2, 0.2, 0.2]  # Weights for each period
 
 # Fetch historical data
 def get_data(symbols, start, end):
-    data = yf.download(symbols, start=start, end=end)['Adj Close']
-    return data
+    data = {}
+    for symbol in symbols:
+        df = yf.download(symbol, start=start, end=end)
+        if df.empty:
+            print(f"⚠️ No data for {symbol} - Check ticker symbol or API limits")
+        else:
+            data[symbol] = df['Adj Close']
+    return pd.DataFrame(data)
 
 # Get data for ETFs and S&P 500
 start_date = '2023-01-01'
 end_date = '2025-01-01'
 all_data = get_data(etf_symbols + [benchmark_symbol], start_date, end_date)
+
+# Check if data is available
+if all_data.empty:
+    st.error("No data retrieved. Check ticker symbols and API availability.")
+    st.stop()
 
 # Calculate performance over lookback periods
 def calc_performance(data, lookbacks):
@@ -46,6 +58,7 @@ rs_ratings = {etf: percentileofscore(rs_values, rs_scores[etf], kind='rank') for
 rs_df = pd.DataFrame({'ETF': rs_ratings.keys(), 'RS Rating': rs_ratings.values()})
 rs_df = rs_df.sort_values(by='RS Rating', ascending=False)
 
-# Display results
-import ace_tools as tools
-tools.display_dataframe_to_user(name="ETF RS Ratings", dataframe=rs_df)
+# Streamlit UI
+st.title("ETF Screener - RS Rating")
+st.write("This app calculates and ranks ETFs based on their relative strength compared to the S&P 500.")
+st.dataframe(rs_df)
