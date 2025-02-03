@@ -15,16 +15,30 @@ def get_data(symbols, start, end):
     data = {}
     for symbol in symbols:
         df = yf.download(symbol, start=start, end=end)
+        
         if df.empty:
             print(f"⚠️ No data for {symbol} - Check ticker symbol or API limits")
-        else:
-            data[symbol] = df['Adj Close']
+            continue  # Skip this symbol if no data
+        
+        if 'Adj Close' not in df.columns:
+            print(f"⚠️ 'Adj Close' column missing for {symbol}. Check Yahoo Finance response.")
+            continue  # Skip if 'Adj Close' is not present
+        
+        data[symbol] = df['Adj Close']
+    
+    if not data:
+        raise ValueError("No valid data retrieved for any symbol.")
+    
     return pd.DataFrame(data)
 
 # Get data for ETFs and S&P 500
 start_date = '2023-01-01'
 end_date = '2025-01-01'
-all_data = get_data(etf_symbols + [benchmark_symbol], start_date, end_date)
+try:
+    all_data = get_data(etf_symbols + [benchmark_symbol], start_date, end_date)
+except ValueError as e:
+    st.error(str(e))
+    st.stop()
 
 # Check if data is available
 if all_data.empty:
