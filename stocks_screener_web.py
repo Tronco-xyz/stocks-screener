@@ -14,19 +14,22 @@ weights = [0.4, 0.2, 0.2, 0.2]  # Weights for each period
 def get_data(symbols, start, end):
     data = {}
     for symbol in symbols:
+        print(f"Fetching data for {symbol} from {start} to {end}...")
         df = yf.download(symbol, start=start, end=end)
         
         if df.empty:
-            print(f"⚠️ No data for {symbol} - Check ticker symbol or API limits")
+            print(f"⚠️ No data for {symbol}. Check ticker symbol or API limits.")
             continue  # Skip this symbol if no data
         
         if 'Adj Close' not in df.columns:
-            print(f"⚠️ 'Adj Close' column missing for {symbol}. Check Yahoo Finance response.")
+            print(f"⚠️ 'Adj Close' column missing for {symbol}. Full response:\n{df.head()}")
             continue  # Skip if 'Adj Close' is not present
         
+        print(f"✅ Data retrieved for {symbol}:\n{df.head()}")
         data[symbol] = df['Adj Close']
     
     if not data:
+        print("❌ No valid data retrieved. Possible API issue or incorrect ticker symbols.")
         raise ValueError("No valid data retrieved for any symbol.")
     
     return pd.DataFrame(data)
