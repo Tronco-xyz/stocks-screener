@@ -26,12 +26,17 @@ def get_data(symbols, start, end):
             
             # Adjust for MultiIndex DataFrame (Yahoo sometimes returns 'Price' as top level)
             if isinstance(df.columns, pd.MultiIndex):
-                df = df.xs('Close', level=1, axis=1)  # Extract 'Close' prices only
+                if 'Close' in df.columns.get_level_values(1):  
+                    df = df.xs('Close', level=1, axis=1)  # Extract 'Close' prices only
             
+            # If 'Close' column is still missing, try 'Adj Close' as fallback
             if 'Close' not in df.columns:
-                print(f"⚠️ 'Close' column missing for {symbol}. Full response:\n{df.head()}")
-                failed_symbols.append(symbol)
-                continue  # Skip if 'Close' is not present
+                if 'Adj Close' in df.columns:
+                    df['Close'] = df['Adj Close']  # Use 'Adj Close' if available
+                else:
+                    print(f"⚠️ No 'Close' or 'Adj Close' column for {symbol}. Full response:\n{df.head()}")
+                    failed_symbols.append(symbol)
+                    continue  # Skip if no valid closing price is found
             
             print(f"✅ Data retrieved for {symbol}:\n{df.head()}")
             data[symbol] = df['Close']
