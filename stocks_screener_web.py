@@ -24,13 +24,17 @@ def get_data(symbols, start, end):
                 failed_symbols.append(symbol)
                 continue  # Skip this symbol if no data
             
-            if 'Adj Close' not in df.columns:
-                print(f"⚠️ 'Adj Close' column missing for {symbol}. Full response:\n{df.head()}")
+            # Adjust for MultiIndex DataFrame (Yahoo sometimes returns 'Price' as top level)
+            if isinstance(df.columns, pd.MultiIndex):
+                df = df.xs('Close', level=1, axis=1)  # Extract 'Close' prices only
+            
+            if 'Close' not in df.columns:
+                print(f"⚠️ 'Close' column missing for {symbol}. Full response:\n{df.head()}")
                 failed_symbols.append(symbol)
-                continue  # Skip if 'Adj Close' is not present
+                continue  # Skip if 'Close' is not present
             
             print(f"✅ Data retrieved for {symbol}:\n{df.head()}")
-            data[symbol] = df['Adj Close']
+            data[symbol] = df['Close']
         except Exception as e:
             print(f"❌ Error retrieving {symbol}: {e}")
             failed_symbols.append(symbol)
