@@ -6,7 +6,7 @@ import streamlit as st
 
 # Define the ETFs to screen and the benchmark (S&P 500)
 etf_symbols = ['QQQ', 'SPY', 'DIA', 'ARKK', 'XLK', 'XLF', 'XLV']  # Add more as needed
-benchmark_symbol = 'SPY'  # S&P 500
+benchmark_symbol = 'SPY'  # Ensure benchmark is uppercase
 lookback_periods = [63, 126, 189, 252]  # 3 months, 6 months, 9 months, 12 months
 weights = [0.4, 0.2, 0.2, 0.2]  # Weights for each period
 
@@ -15,18 +15,22 @@ def get_data(symbols, start, end):
     data = {}
     for symbol in symbols:
         print(f"Fetching data for {symbol} from {start} to {end}...")
-        df = yf.download(symbol, start=start, end=end)
-        
-        if df.empty:
-            print(f"⚠️ No data for {symbol}. Check ticker symbol or API limits.")
-            continue  # Skip this symbol if no data
-        
-        if 'Adj Close' not in df.columns:
-            print(f"⚠️ 'Adj Close' column missing for {symbol}. Full response:\n{df.head()}")
-            continue  # Skip if 'Adj Close' is not present
-        
-        print(f"✅ Data retrieved for {symbol}:\n{df.head()}")
-        data[symbol] = df['Adj Close']
+        try:
+            df = yf.download(symbol, start=start, end=end)
+            
+            if df.empty:
+                print(f"⚠️ No data for {symbol}. Check ticker symbol or API limits.")
+                continue  # Skip this symbol if no data
+            
+            if 'Adj Close' not in df.columns:
+                print(f"⚠️ 'Adj Close' column missing for {symbol}. Full response:\n{df.head()}")
+                continue  # Skip if 'Adj Close' is not present
+            
+            print(f"✅ Data retrieved for {symbol}:\n{df.head()}")
+            data[symbol] = df['Adj Close']
+        except Exception as e:
+            print(f"❌ Error retrieving {symbol}: {e}")
+            continue
     
     if not data:
         print("❌ No valid data retrieved. Possible API issue or incorrect ticker symbols.")
@@ -35,8 +39,8 @@ def get_data(symbols, start, end):
     return pd.DataFrame(data)
 
 # Get data for ETFs and S&P 500
-start_date = '2023-01-01'
-end_date = '2025-01-01'
+start_date = '2024-01-01'  # Reduce date range for testing
+end_date = '2024-12-31'
 try:
     all_data = get_data(etf_symbols + [benchmark_symbol], start_date, end_date)
 except ValueError as e:
