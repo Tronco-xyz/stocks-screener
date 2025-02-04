@@ -79,20 +79,20 @@ def calc_performance(data, lookbacks):
 perf_etfs = calc_performance(all_data[etf_symbols], lookback_periods)
 perf_benchmark = calc_performance(all_data[[benchmark_symbol]], lookback_periods)
 
-rs_scores = {}
+rs_scores = pd.Series(dtype=float)
 for etf in etf_symbols:
     weighted_rs = sum(
         weights[i] * (perf_etfs.at[etf, lookback_periods[i]] / perf_benchmark.at[benchmark_symbol, lookback_periods[i]])
         for i in range(len(lookback_periods))
     ) * 100
-    rs_scores[etf] = weighted_rs
+    rs_scores.at[etf] = weighted_rs
 
 # Rank ETFs on a scale of 1-99
-rs_values = list(rs_scores.values())
-rs_ratings = {etf: percentileofscore(rs_values, rs_scores[etf], kind='rank') for etf in etf_symbols}
+rs_ratings = rs_scores.rank(pct=True) * 99
 
 # Convert to DataFrame for display
-rs_df = pd.DataFrame({'ETF': list(rs_ratings.keys()), 'RS Rating': list(rs_ratings.values())})
+rs_df = rs_ratings.reset_index()
+rs_df.columns = ['ETF', 'RS Rating']
 rs_df = rs_df.sort_values(by='RS Rating', ascending=False)
 
 # Streamlit UI
