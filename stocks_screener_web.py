@@ -92,7 +92,7 @@ rs_values = list(rs_scores.values())
 rs_ratings = {etf: percentileofscore(rs_values, rs_scores[etf], kind='rank') for etf in etf_symbols}
 
 # Convert to DataFrame for display
-rs_df = pd.DataFrame({'ETF': rs_ratings.keys(), 'RS Rating': rs_ratings.values()})
+rs_df = pd.DataFrame({'ETF': list(rs_ratings.keys()), 'RS Rating': list(rs_ratings.values())})
 rs_df = rs_df.sort_values(by='RS Rating', ascending=False)
 
 # Streamlit UI
