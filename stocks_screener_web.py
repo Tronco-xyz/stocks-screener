@@ -4,98 +4,56 @@ import numpy as np
 from scipy.stats import percentileofscore
 import streamlit as st
 
-# Define the ETFs to screen and the benchmark (S&P 500)
-etf_symbols = ['QQQ', 'SPY', 'DIA', 'ARKK', 'XLK', 'XLF', 'XLV']  # Add more as needed
-benchmark_symbol = 'SPY'  # Ensure benchmark is uppercase
-lookback_periods = [63, 126, 189, 252]  # 3 months, 6 months, 9 months, 12 months
-weights = [0.4, 0.2, 0.2, 0.2]  # Weights for each period
+# Define ETFs to screen and benchmark (S&P 500) - Add more ETF symbols if needed!  
+etf_symbols = ['QQQ', 'SPY', 'DIA', 'ARKK', 'XLK', 'XLF'] # Example list, expand it as desired
+benchmark_symbol = 'SPY' 
 
-# Fetch historical data
-def get_data(symbols, start, end):
-    data = {}
-    failed_symbols = []
-    for symbol in symbols:
-        print(f"Fetching data for {symbol} from {start} to {end}...")
-        try:
-            df = yf.download(symbol, start=start, end=end)
-            
-            if df.empty:
-                print(f"⚠️ No data for {symbol}. Skipping...")
-                failed_symbols.append(symbol)
-                continue  # Skip this symbol if no data
-            
-            # Adjust for MultiIndex DataFrame (Yahoo sometimes returns 'Price' as top level)
-            if isinstance(df.columns, pd.MultiIndex):
-                if 'Close' in df.columns.get_level_values(1):  
-                    df = df.xs('Close', level=1, axis=1)  # Extract 'Close' prices only
-            
-            # If 'Close' column is still missing, try 'Adj Close' as fallback
-            if 'Close' not in df.columns:
-                if 'Adj Close' in df.columns:
-                    df['Close'] = df['Adj Close']  # Use 'Adj Close' if available
-                else:
-                    print(f"⚠️ No 'Close' or 'Adj Close' column for {symbol}. Full response:\n{df.head()}")
-                    failed_symbols.append(symbol)
-                    continue  # Skip if no valid closing price is found
-            
-            print(f"✅ Data retrieved for {symbol}:\n{df.head()}")
-            data[symbol] = df['Close']
-        except Exception as e:
-            print(f"❌ Error retrieving {symbol}: {e}")
-            failed_symbols.append(symbol)
-            continue
-    
-    if failed_symbols:
-        print(f"❌ Failed to retrieve data for: {', '.join(failed_symbols)}")
-    
-    if not data:
-        print("❌ No valid data retrieved. Possible API issue or incorrect ticker symbols.")
-        raise ValueError("No valid data retrieved for any symbol.")
-    
-    return pd.DataFrame(data)
+lookback_periods = [63, 126, 189]  # Number of days for each lookback period (adjust if needed)
+weights = [0.33, 0.34, 0.33]  # Weights to apply to each lookback period
 
-# Get data for ETFs and S&P 500
-start_date = '2024-01-01'  # Reduce date range for testing
-end_date = '2024-12-31'
-try:
-    all_data = get_data(etf_symbols + [benchmark_symbol], start_date, end_date)
-except ValueError as e:
-    st.error(str(e))
-    st.stop()
+# User-configurable options in Streamlit's sidebar
+st.sidebar.title("ETF Screener - RS Rating")
+selected_etfs = st.sidebar.multiselect("Select ETFs:", options=etf_symbols) 
 
-# Check if data is available
-if all_data.empty:
-    st.error("No data retrieved. Check ticker symbols and API availability.")
-    st.stop()
 
-# Calculate performance over lookback periods
-def calc_performance(data, lookbacks):
-    perf = pd.DataFrame(index=data.columns)
-    for period in lookbacks:
-        perf[period] = data.pct_change(period).iloc[-1] + 1  # Compute returns
-    return perf
+def get_data(tickers, start_date, end_date):
+    """Fetches historical closing price data for specified tickers."""
 
-# Compute relative strength scores
-perf_etfs = calc_performance(all_data[etf_symbols], lookback_periods)
-perf_benchmark = calc_performance(all_data[[benchmark_symbol]], lookback_periods)
+    try:
+        df = yf.download(tickers, start=start_date, end=end_date)['Close']  # Download data 
+        return df 
+    except Exception as e: 
+        print(f"Error fetching data: {e}") # Log the error for debugging
 
-rs_scores = pd.Series(dtype=float)
-for etf in etf_symbols:
-    weighted_rs = sum(
-        weights[i] * (perf_etfs.at[etf, lookback_periods[i]] / perf_benchmark.at[benchmark_symbol, lookback_periods[i]])
-        for i in range(len(lookback_periods))
-    ) * 100
-    rs_scores.at[etf] = weighted_rs
+def calculate_rs_rating(etf_prices):
+    """Calculates RS ratings based on relative performance."""
 
-# Rank ETFs on a scale of 1-99
-rs_ratings = rs_scores.rank(pct=True) * 99
+    returns = etf_prices.pct_change()  # Calculate daily returns for each ETF
+    weighted_avg = (weights[0] * returns.rolling(lookback_periods[0]).mean() + 
+                    weights[1] * returns.rolling(lookback_periods[1]).mean() + 
+                    weights[2] * returns.rolling(lookback_periods[2]).mean())  
 
-# Convert to DataFrame for display
-rs_df = rs_ratings.reset_index()
-rs_df.columns = ['ETF', 'RS Rating']
-rs_df = rs_df.sort_values(by='RS Rating', ascending=False)
+    rs = weighted_avg / benchmark_prices.pct_change().rolling(window=60).mean() # Adjust window as needed for the benchmark's performance period
+   return rs
 
-# Streamlit UI
-st.title("ETF Screener - RS Rating")
-st.write("This app calculates and ranks ETFs based on their relative strength compared to the S&P 500.")
-st.dataframe(rs_df)
+
+if selected_etfs: 
+
+    try:
+        start_date = "2023-01-01"  # Set your desired start date (YYYY-MM-DD)
+        end_date = "2023-10-26" # Set your desired end date (YYYY-MM-DD)
+
+        all_data = get_data(selected_etfs + [benchmark_symbol], start_date, end_date) 
+
+        # Calculate RS ratings
+        rs_ratings = {}  
+        for etf in selected_etfs:  
+            performance = calculate_rs_rating(all_data[etf]) # Calculate performance for each ETF individually. Replace 'benchmark' with the benchmark ticker if needed!    
+            rs_ratings[etf] = performance.mean() 
+
+        # Rank ETFs on a scale of 1-99 (use percentileofscore) - Adjust as needed based on your dataset and ranking logic
+
+    except ValueError as e:
+        st.error(str(e))
+
+
