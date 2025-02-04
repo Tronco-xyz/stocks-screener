@@ -6,7 +6,7 @@ import streamlit as st
 
 # Define the ETFs to screen and the benchmark (S&P 500)
 etf_symbols = ['QQQ', 'SPY', 'DIA', 'ARKK', 'XLK', 'XLF', 'XLV']  # Add more as needed
-benchmark_symbol = '^GSPC'  # S&P 500
+benchmark_symbol = 'spy'  # S&P 500
 lookback_periods = [63, 126, 189, 252]  # 3 months, 6 months, 9 months, 12 months
 weights = [0.4, 0.2, 0.2, 0.2]  # Weights for each period
 
